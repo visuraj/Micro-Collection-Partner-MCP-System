@@ -1,10 +1,19 @@
-import { 
-  User, InsertUser, 
-  PickupPartner, InsertPickupPartner,
-  Wallet, InsertWallet,
-  Transaction, InsertTransaction,
-  Order, InsertOrder,
-  Notification, InsertNotification
+import {
+  User,
+  InsertUser,
+  users,
+  PickupPartner,
+  InsertPickupPartner,
+  pickupPartners,
+  Order,
+  InsertOrder,
+  orders,
+  Transaction,
+  InsertTransaction,
+  transactions,
+  Notification,
+  InsertNotification,
+  notifications,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -12,189 +21,219 @@ export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
-  
+  updateUserWalletBalance(userId: number, amount: number): Promise<User | undefined>;
+
   // Pickup Partner methods
-  getPartners(): Promise<PickupPartner[]>;
-  getPartner(id: number): Promise<PickupPartner | undefined>;
-  createPartner(partner: InsertPickupPartner): Promise<PickupPartner>;
-  updatePartner(id: number, updates: Partial<PickupPartner>): Promise<PickupPartner | undefined>;
-  deletePartner(id: number): Promise<boolean>;
-  
-  // Wallet methods
-  getWallet(id: number): Promise<Wallet | undefined>;
-  getWalletByUserId(userId: number): Promise<Wallet | undefined>;
-  createWallet(wallet: InsertWallet): Promise<Wallet>;
-  updateWalletBalance(id: number, amount: number): Promise<Wallet | undefined>;
-  
-  // Transaction methods
-  getTransactions(): Promise<Transaction[]>;
-  getTransactionsByWalletId(walletId: number): Promise<Transaction[]>;
-  createTransaction(transaction: InsertTransaction): Promise<Transaction>;
-  
+  getAllPickupPartners(mcpId: number): Promise<PickupPartner[]>;
+  getPickupPartner(id: number): Promise<PickupPartner | undefined>;
+  createPickupPartner(partner: InsertPickupPartner): Promise<PickupPartner>;
+  updatePickupPartner(id: number, update: Partial<InsertPickupPartner>): Promise<PickupPartner | undefined>;
+  deletePickupPartner(id: number): Promise<boolean>;
+  updatePickupPartnerWalletBalance(id: number, amount: number): Promise<PickupPartner | undefined>;
+
   // Order methods
-  getOrders(): Promise<Order[]>;
+  getAllOrders(mcpId: number): Promise<Order[]>;
+  getOrdersByPickupPartner(pickupPartnerId: number): Promise<Order[]>;
   getOrder(id: number): Promise<Order | undefined>;
-  getOrdersByPartnerId(partnerId: number): Promise<Order[]>;
   createOrder(order: InsertOrder): Promise<Order>;
-  updateOrderStatus(id: number, status: string): Promise<Order | undefined>;
-  assignOrderToPartner(orderId: number, partnerId: number): Promise<Order | undefined>;
-  
+  updateOrderStatus(id: number, status: string, pickupPartnerId?: number): Promise<Order | undefined>;
+
+  // Transaction methods
+  getAllTransactions(mcpId: number): Promise<Transaction[]>;
+  getTransactionsByPickupPartner(pickupPartnerId: number): Promise<Transaction[]>;
+  getTransaction(id: number): Promise<Transaction | undefined>;
+  createTransaction(transaction: InsertTransaction): Promise<Transaction>;
+
   // Notification methods
-  getNotifications(userId: number): Promise<Notification[]>;
+  getAllNotifications(mcpId: number): Promise<Notification[]>;
+  getNotification(id: number): Promise<Notification | undefined>;
   createNotification(notification: InsertNotification): Promise<Notification>;
   markNotificationAsRead(id: number): Promise<Notification | undefined>;
+  getUnreadNotificationsCount(mcpId: number): Promise<number>;
 }
 
 export class MemStorage implements IStorage {
   private users: Map<number, User>;
-  private partners: Map<number, PickupPartner>;
-  private wallets: Map<number, Wallet>;
-  private transactions: Map<number, Transaction>;
+  private pickupPartners: Map<number, PickupPartner>;
   private orders: Map<number, Order>;
+  private transactions: Map<number, Transaction>;
   private notifications: Map<number, Notification>;
-  
-  private userId: number;
-  private partnerId: number;
-  private walletId: number;
-  private transactionId: number;
-  private orderId: number;
-  private notificationId: number;
+  private userIdCounter: number;
+  private partnerIdCounter: number;
   private orderIdCounter: number;
-  
+  private transactionIdCounter: number;
+  private notificationIdCounter: number;
+
   constructor() {
     this.users = new Map();
-    this.partners = new Map();
-    this.wallets = new Map();
-    this.transactions = new Map();
+    this.pickupPartners = new Map();
     this.orders = new Map();
+    this.transactions = new Map();
     this.notifications = new Map();
-    
-    this.userId = 1;
-    this.partnerId = 1;
-    this.walletId = 1;
-    this.transactionId = 1;
-    this.orderId = 1;
-    this.notificationId = 1;
-    this.orderIdCounter = 2485; // Start with ORD-2485 for demo
-    
-    this.seedData();
-  }
+    this.userIdCounter = 1;
+    this.partnerIdCounter = 1;
+    this.orderIdCounter = 1;
+    this.transactionIdCounter = 1;
+    this.notificationIdCounter = 1;
 
-  // Seed some initial data for demo purposes
-  private seedData() {
-    // Create admin user
-    const adminUser: InsertUser = {
-      username: "admin",
-      password: "password", // In real world, this would be hashed
-      fullName: "John Doe",
-      email: "john.doe@example.com",
-      phone: "1234567890",
-      role: "mcp",
-    };
-    
-    const admin = this.createUser(adminUser);
-    
-    // Create wallet for admin
-    const adminWallet: InsertWallet = {
-      userId: admin.id,
-      balance: 24500,
-    };
-    
-    this.createWallet(adminWallet);
-    
-    // Create some pickup partners
-    const partners = [
-      { name: "Rahul Kumar", email: "rahul@example.com", phone: "9876543210", status: "active", commissionType: "percentage", commissionValue: 10 },
-      { name: "Anita Rao", email: "anita@example.com", phone: "9876543211", status: "active", commissionType: "fixed", commissionValue: 20 },
-      { name: "Sanjay Patel", email: "sanjay@example.com", phone: "9876543212", status: "active", commissionType: "percentage", commissionValue: 15 },
-      { name: "Meera Gupta", email: "meera@example.com", phone: "9876543213", status: "inactive", commissionType: "fixed", commissionValue: 25 }
-    ];
-    
-    partners.forEach(partnerData => {
-      const partner: InsertPickupPartner = {
-        userId: admin.id,
-        ...partnerData
-      };
-      const createdPartner = this.createPartner(partner);
+    // Add a default user (for demo purposes)
+    this.createUser({
+      username: "mcp_admin",
+      password: "password123",
+      name: "Rajesh Kumar",
+      email: "rajesh@example.com",
+      phone: "+91 9876543210",
+    }).then((user) => {
+      this.updateUserWalletBalance(user.id, 25432.50);
       
-      // Create wallet for each partner
-      const partnerWallet: InsertWallet = {
-        userId: createdPartner.id,
-        balance: Math.floor(Math.random() * 1000) + 500,
-      };
-      
-      this.createWallet(partnerWallet);
-      
-      // Create some orders for active partners
-      if (createdPartner.status === "active") {
-        const orderStatuses = ["pending", "in_progress", "completed"];
-        const orderLocations = ["Mumbai", "Delhi", "Bangalore", "Chennai", "Kolkata"];
+      // Add some demo pickup partners
+      this.createPickupPartner({
+        name: "Amit Mishra",
+        phone: "+91 9876543210",
+        email: "amit@example.com",
+        address: "123 Main St, Delhi",
+        isActive: true,
+        commissionType: "percentage",
+        commissionValue: 10,
+        mcpId: user.id,
+      }).then((partner1) => {
+        this.updatePickupPartnerWalletBalance(partner1.id, 1250);
         
-        for (let i = 0; i < Math.floor(Math.random() * 10) + 5; i++) {
-          const orderStatus = orderStatuses[Math.floor(Math.random() * orderStatuses.length)];
-          
-          const order: InsertOrder = {
-            orderId: `#ORD-${this.orderIdCounter++}`,
-            partnerId: createdPartner.id,
-            status: orderStatus,
-            amount: Math.floor(Math.random() * 500) + 100,
-            pickupLocation: orderLocations[Math.floor(Math.random() * orderLocations.length)],
-            dropLocation: orderLocations[Math.floor(Math.random() * orderLocations.length)],
-          };
-          
-          this.createOrder(order);
-        }
-      }
+        // Add some orders for this partner
+        this.createOrder({
+          orderNumber: "ORD12345",
+          amount: 120,
+          status: "completed",
+          location: "Sector 15, Delhi",
+          customerId: "CUST001",
+          mcpId: user.id,
+          pickupPartnerId: partner1.id,
+        });
+        
+        this.createOrder({
+          orderNumber: "ORD12341",
+          amount: 110,
+          status: "completed",
+          location: "Sector 10, Delhi",
+          customerId: "CUST002",
+          mcpId: user.id,
+          pickupPartnerId: partner1.id,
+        });
+      });
+      
+      this.createPickupPartner({
+        name: "Suresh Patel",
+        phone: "+91 8765432109",
+        email: "suresh@example.com",
+        address: "456 Park Ave, Mumbai",
+        isActive: true,
+        commissionType: "fixed",
+        commissionValue: 50,
+        mcpId: user.id,
+      }).then((partner2) => {
+        this.updatePickupPartnerWalletBalance(partner2.id, 850);
+        
+        this.createOrder({
+          orderNumber: "ORD12344",
+          amount: 85,
+          status: "in_progress",
+          location: "Sector 18, Mumbai",
+          customerId: "CUST003",
+          mcpId: user.id,
+          pickupPartnerId: partner2.id,
+        });
+      });
+      
+      this.createPickupPartner({
+        name: "Ramesh Kumar",
+        phone: "+91 7654321098",
+        email: "ramesh@example.com",
+        address: "789 Lake View, Bangalore",
+        isActive: false,
+        commissionType: "percentage",
+        commissionValue: 8,
+        mcpId: user.id,
+      }).then((partner3) => {
+        this.updatePickupPartnerWalletBalance(partner3.id, 320);
+        
+        this.createOrder({
+          orderNumber: "ORD12342",
+          amount: 95,
+          status: "completed",
+          location: "Sector 20, Bangalore",
+          customerId: "CUST004",
+          mcpId: user.id,
+          pickupPartnerId: partner3.id,
+        });
+      });
+      
+      // Create an unassigned order
+      this.createOrder({
+        orderNumber: "ORD12343",
+        amount: 75,
+        status: "unassigned",
+        location: "Sector 15, Noida",
+        customerId: "CUST005",
+        mcpId: user.id,
+        pickupPartnerId: undefined,
+      });
+      
+      // Add some transactions
+      this.createTransaction({
+        type: "deposit",
+        amount: 5000,
+        description: "Added Funds to Wallet",
+        mcpId: user.id,
+        pickupPartnerId: undefined,
+        orderId: undefined,
+      });
+      
+      this.createTransaction({
+        type: "transfer",
+        amount: -500,
+        description: "Transferred to Amit Mishra",
+        mcpId: user.id,
+        pickupPartnerId: 1,
+        orderId: undefined,
+      });
+      
+      this.createTransaction({
+        type: "transfer",
+        amount: -750,
+        description: "Transferred to Suresh Patel",
+        mcpId: user.id,
+        pickupPartnerId: 2,
+        orderId: undefined,
+      });
+      
+      this.createTransaction({
+        type: "withdrawal",
+        amount: -10000,
+        description: "Withdrawal to Bank Account",
+        mcpId: user.id,
+        pickupPartnerId: undefined,
+        orderId: undefined,
+      });
+      
+      // Add some notifications
+      this.createNotification({
+        type: "order",
+        message: "New order #ORD12345 has been assigned to Amit Mishra",
+        mcpId: user.id,
+      });
+      
+      this.createNotification({
+        type: "wallet",
+        message: "Successfully added ₹5,000 to your wallet",
+        mcpId: user.id,
+      });
+      
+      this.createNotification({
+        type: "partner",
+        message: "Amit Mishra has completed order #ORD12345",
+        mcpId: user.id,
+      });
     });
-    
-    // Create some transactions
-    const transactionTypes = ["deposit", "withdrawal", "transfer"];
-    const descriptions = ["Added to wallet", "Withdrawal", "Transfer to partner"];
-    
-    for (let i = 0; i < 10; i++) {
-      const type = transactionTypes[Math.floor(Math.random() * transactionTypes.length)];
-      const amount = Math.floor(Math.random() * 1000) + 100;
-      
-      const transaction: InsertTransaction = {
-        walletId: 1, // Admin wallet
-        type,
-        amount: type === "withdrawal" || type === "transfer" ? -amount : amount,
-        description: descriptions[transactionTypes.indexOf(type)],
-        status: "completed",
-        metadata: {
-          date: new Date(Date.now() - Math.floor(Math.random() * 10) * 24 * 60 * 60 * 1000).toISOString(),
-          method: type === "deposit" ? "UPI" : "Wallet"
-        }
-      };
-      
-      this.createTransaction(transaction);
-    }
-    
-    // Create some notifications
-    const notificationTypes = ["order_update", "transaction", "system"];
-    const messages = [
-      "New order assigned",
-      "Order status updated",
-      "Funds added to wallet",
-      "Partner completed an order",
-      "Low wallet balance"
-    ];
-    
-    for (let i = 0; i < 5; i++) {
-      const type = notificationTypes[Math.floor(Math.random() * notificationTypes.length)];
-      
-      const notification: InsertNotification = {
-        userId: admin.id,
-        type,
-        message: messages[Math.floor(Math.random() * messages.length)],
-        read: Math.random() > 0.7, // 30% read, 70% unread
-        metadata: {
-          timestamp: new Date(Date.now() - Math.floor(Math.random() * 3) * 24 * 60 * 60 * 1000).toISOString()
-        }
-      };
-      
-      this.createNotification(notification);
-    }
   }
 
   // User methods
@@ -204,216 +243,196 @@ export class MemStorage implements IStorage {
 
   async getUserByUsername(username: string): Promise<User | undefined> {
     return Array.from(this.users.values()).find(
-      (user) => user.username === username,
+      (user) => user.username === username
     );
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const id = this.userId++;
-    const user: User = { ...insertUser, id };
+    const id = this.userIdCounter++;
+    const user: User = { ...insertUser, id, walletBalance: "0" };
     this.users.set(id, user);
     return user;
   }
-  
-  // Pickup Partner methods
-  async getPartners(): Promise<PickupPartner[]> {
-    return Array.from(this.partners.values());
-  }
-  
-  async getPartner(id: number): Promise<PickupPartner | undefined> {
-    return this.partners.get(id);
-  }
-  
-  async createPartner(insertPartner: InsertPickupPartner): Promise<PickupPartner> {
-    const id = this.partnerId++;
-    const now = new Date();
-    const partner: PickupPartner = { 
-      ...insertPartner, 
-      id, 
-      totalOrders: 0, 
-      completedOrders: 0, 
-      createdAt: now
+
+  async updateUserWalletBalance(userId: number, amount: number): Promise<User | undefined> {
+    const user = await this.getUser(userId);
+    if (!user) return undefined;
+    
+    const currentBalance = parseFloat(user.walletBalance);
+    const updatedUser = {
+      ...user,
+      walletBalance: (currentBalance + amount).toFixed(2),
     };
-    this.partners.set(id, partner);
-    return partner;
+    
+    this.users.set(userId, updatedUser);
+    return updatedUser;
   }
-  
-  async updatePartner(id: number, updates: Partial<PickupPartner>): Promise<PickupPartner | undefined> {
-    const partner = this.partners.get(id);
+
+  // Pickup Partner methods
+  async getAllPickupPartners(mcpId: number): Promise<PickupPartner[]> {
+    return Array.from(this.pickupPartners.values()).filter(
+      partner => partner.mcpId === mcpId
+    );
+  }
+
+  async getPickupPartner(id: number): Promise<PickupPartner | undefined> {
+    return this.pickupPartners.get(id);
+  }
+
+  async createPickupPartner(partner: InsertPickupPartner): Promise<PickupPartner> {
+    const id = this.partnerIdCounter++;
+    const newPartner: PickupPartner = { ...partner, id, walletBalance: "0" };
+    this.pickupPartners.set(id, newPartner);
+    return newPartner;
+  }
+
+  async updatePickupPartner(id: number, update: Partial<InsertPickupPartner>): Promise<PickupPartner | undefined> {
+    const partner = await this.getPickupPartner(id);
     if (!partner) return undefined;
     
-    const updatedPartner = { ...partner, ...updates };
-    this.partners.set(id, updatedPartner);
+    const updatedPartner = { ...partner, ...update };
+    this.pickupPartners.set(id, updatedPartner);
     return updatedPartner;
   }
-  
-  async deletePartner(id: number): Promise<boolean> {
-    return this.partners.delete(id);
+
+  async deletePickupPartner(id: number): Promise<boolean> {
+    return this.pickupPartners.delete(id);
   }
-  
-  // Wallet methods
-  async getWallet(id: number): Promise<Wallet | undefined> {
-    return this.wallets.get(id);
-  }
-  
-  async getWalletByUserId(userId: number): Promise<Wallet | undefined> {
-    return Array.from(this.wallets.values()).find(wallet => wallet.userId === userId);
-  }
-  
-  async createWallet(insertWallet: InsertWallet): Promise<Wallet> {
-    const id = this.walletId++;
-    const now = new Date();
-    const wallet: Wallet = { ...insertWallet, id, updatedAt: now };
-    this.wallets.set(id, wallet);
-    return wallet;
-  }
-  
-  async updateWalletBalance(id: number, amount: number): Promise<Wallet | undefined> {
-    const wallet = this.wallets.get(id);
-    if (!wallet) return undefined;
+
+  async updatePickupPartnerWalletBalance(id: number, amount: number): Promise<PickupPartner | undefined> {
+    const partner = await this.getPickupPartner(id);
+    if (!partner) return undefined;
     
-    const now = new Date();
-    const updatedWallet: Wallet = {
-      ...wallet,
-      balance: wallet.balance + amount,
-      updatedAt: now
+    const currentBalance = parseFloat(partner.walletBalance);
+    const updatedPartner = {
+      ...partner,
+      walletBalance: (currentBalance + amount).toFixed(2),
     };
     
-    this.wallets.set(id, updatedWallet);
-    return updatedWallet;
+    this.pickupPartners.set(id, updatedPartner);
+    return updatedPartner;
   }
-  
-  // Transaction methods
-  async getTransactions(): Promise<Transaction[]> {
-    return Array.from(this.transactions.values());
-  }
-  
-  async getTransactionsByWalletId(walletId: number): Promise<Transaction[]> {
-    return Array.from(this.transactions.values())
-      .filter(transaction => transaction.walletId === walletId)
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }
-  
-  async createTransaction(insertTransaction: InsertTransaction): Promise<Transaction> {
-    const id = this.transactionId++;
-    const now = new Date();
-    const transaction: Transaction = { ...insertTransaction, id, createdAt: now };
-    this.transactions.set(id, transaction);
-    return transaction;
-  }
-  
+
   // Order methods
-  async getOrders(): Promise<Order[]> {
-    return Array.from(this.orders.values());
+  async getAllOrders(mcpId: number): Promise<Order[]> {
+    return Array.from(this.orders.values())
+      .filter(order => order.mcpId === mcpId)
+      .sort((a, b) => {
+        // Sort by created date (newest first)
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      });
   }
-  
+
+  async getOrdersByPickupPartner(pickupPartnerId: number): Promise<Order[]> {
+    return Array.from(this.orders.values())
+      .filter(order => order.pickupPartnerId === pickupPartnerId)
+      .sort((a, b) => {
+        // Sort by created date (newest first)
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      });
+  }
+
   async getOrder(id: number): Promise<Order | undefined> {
     return this.orders.get(id);
   }
-  
-  async getOrdersByPartnerId(partnerId: number): Promise<Order[]> {
-    return Array.from(this.orders.values())
-      .filter(order => order.partnerId === partnerId)
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }
-  
-  async createOrder(insertOrder: InsertOrder): Promise<Order> {
-    const id = this.orderId++;
-    const now = new Date();
-    
-    // Generate a readable order ID if not provided
-    const orderId = insertOrder.orderId || `#ORD-${this.orderIdCounter++}`;
-    
-    const order: Order = {
-      ...insertOrder,
-      id,
-      orderId,
-      createdAt: now,
-      updatedAt: now
+
+  async createOrder(order: InsertOrder): Promise<Order> {
+    const id = this.orderIdCounter++;
+    const newOrder: Order = { 
+      ...order, 
+      id, 
+      createdAt: new Date() 
     };
-    
-    this.orders.set(id, order);
-    
-    // Update partner's total orders count
-    if (order.partnerId) {
-      const partner = await this.getPartner(order.partnerId);
-      if (partner) {
-        await this.updatePartner(partner.id, {
-          totalOrders: partner.totalOrders + 1
-        });
-      }
-    }
-    
-    return order;
+    this.orders.set(id, newOrder);
+    return newOrder;
   }
-  
-  async updateOrderStatus(id: number, status: string): Promise<Order | undefined> {
-    const order = this.orders.get(id);
+
+  async updateOrderStatus(id: number, status: string, pickupPartnerId?: number): Promise<Order | undefined> {
+    const order = await this.getOrder(id);
     if (!order) return undefined;
     
-    const now = new Date();
-    const updatedOrder: Order = {
-      ...order,
+    const updatedOrder = { 
+      ...order, 
       status,
-      updatedAt: now
+      ...(pickupPartnerId !== undefined && { pickupPartnerId }),
     };
     
     this.orders.set(id, updatedOrder);
-    
-    // If order is completed, update partner's completed orders count
-    if (status === "completed" && order.partnerId) {
-      const partner = await this.getPartner(order.partnerId);
-      if (partner) {
-        await this.updatePartner(partner.id, {
-          completedOrders: partner.completedOrders + 1
-        });
-      }
-    }
-    
     return updatedOrder;
   }
-  
-  async assignOrderToPartner(orderId: number, partnerId: number): Promise<Order | undefined> {
-    const order = this.orders.get(orderId);
-    if (!order) return undefined;
-    
-    const now = new Date();
-    const updatedOrder: Order = {
-      ...order,
-      partnerId,
-      updatedAt: now
+
+  // Transaction methods
+  async getAllTransactions(mcpId: number): Promise<Transaction[]> {
+    return Array.from(this.transactions.values())
+      .filter(transaction => transaction.mcpId === mcpId)
+      .sort((a, b) => {
+        // Sort by created date (newest first)
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      });
+  }
+
+  async getTransactionsByPickupPartner(pickupPartnerId: number): Promise<Transaction[]> {
+    return Array.from(this.transactions.values())
+      .filter(transaction => transaction.pickupPartnerId === pickupPartnerId)
+      .sort((a, b) => {
+        // Sort by created date (newest first)
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      });
+  }
+
+  async getTransaction(id: number): Promise<Transaction | undefined> {
+    return this.transactions.get(id);
+  }
+
+  async createTransaction(transaction: InsertTransaction): Promise<Transaction> {
+    const id = this.transactionIdCounter++;
+    const newTransaction: Transaction = { 
+      ...transaction, 
+      id, 
+      createdAt: new Date() 
     };
-    
-    this.orders.set(orderId, updatedOrder);
-    return updatedOrder;
+    this.transactions.set(id, newTransaction);
+    return newTransaction;
   }
-  
+
   // Notification methods
-  async getNotifications(userId: number): Promise<Notification[]> {
+  async getAllNotifications(mcpId: number): Promise<Notification[]> {
     return Array.from(this.notifications.values())
-      .filter(notification => notification.userId === userId)
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      .filter(notification => notification.mcpId === mcpId)
+      .sort((a, b) => {
+        // Sort by created date (newest first)
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      });
   }
-  
-  async createNotification(insertNotification: InsertNotification): Promise<Notification> {
-    const id = this.notificationId++;
-    const now = new Date();
-    const notification: Notification = { ...insertNotification, id, createdAt: now };
-    this.notifications.set(id, notification);
-    return notification;
+
+  async getNotification(id: number): Promise<Notification | undefined> {
+    return this.notifications.get(id);
   }
-  
+
+  async createNotification(notification: InsertNotification): Promise<Notification> {
+    const id = this.notificationIdCounter++;
+    const newNotification: Notification = { 
+      ...notification, 
+      id, 
+      isRead: false,
+      createdAt: new Date() 
+    };
+    this.notifications.set(id, newNotification);
+    return newNotification;
+  }
+
   async markNotificationAsRead(id: number): Promise<Notification | undefined> {
-    const notification = this.notifications.get(id);
+    const notification = await this.getNotification(id);
     if (!notification) return undefined;
     
-    const updatedNotification: Notification = {
-      ...notification,
-      read: true
-    };
-    
+    const updatedNotification = { ...notification, isRead: true };
     this.notifications.set(id, updatedNotification);
     return updatedNotification;
+  }
+
+  async getUnreadNotificationsCount(mcpId: number): Promise<number> {
+    const notifications = await this.getAllNotifications(mcpId);
+    return notifications.filter(notification => !notification.isRead).length;
   }
 }
 
